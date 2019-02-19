@@ -1,7 +1,18 @@
 import requests
-from collections import OrderedDict
-import os
+import sys
 from .signing import get_headers_for_request
+
+_ver = sys.version_info
+is_py2 = (_ver[0] == 2)
+is_py3 = (_ver[0] == 3)
+
+if is_py3:
+    from urllib.parse import parse_qs, quote, unquote, urlencode
+    from urllib.parse import urlparse as url_parse
+elif is_py2: # fallback to Python 2
+    from urlparse import parse_qs
+    from urlparse import urlparse as url_parse
+    from urllib import quote, unquote, urlencode
 
 try:
     HAS_BOTO=True
@@ -9,7 +20,7 @@ try:
     import botocore.session
     import botocore.exceptions
     import boto3
-except:
+except ImportError:
     HAS_BOTO=False
 
 # Set default logging handler to avoid "No handler found" warnings.
@@ -22,6 +33,8 @@ except ImportError:
         def emit(self, record):
             pass
 logging.getLogger(__name__).addHandler(NullHandler())
+
+
 
 class AwsRequester(object):
     def __init__(self, region, access_key=None, secret_key=None, session_token=None, session_expires=None):
@@ -112,18 +125,22 @@ class AwsRequester(object):
 
         # TODO: build query params if they were passed in separately
 
-        req = requests.Request(method, url,
-                               data=data,
-                               headers=headers,
-                               params=params,
-                               cookies=cookies,
-                               files=files,
-                               auth=auth,
-                               json=json,
-                               hooks=hooks
-                               )
+        req = requests.Request(
+            method,
+            url,
+            data=data,
+            headers=headers,
+            params=params,
+            cookies=cookies,
+            files=files,
+            auth=auth,
+            json=json,
+            hooks=hooks)
         prepped = req.prepare()
-        aws_auth_headers = get_headers_for_request(prepped.url,
+        # signing will encode the strings
+        p_url = prepped.url
+        p_url = requests.compat.unquote_plus(requests.compat.unquote(p_url))
+        aws_auth_headers = get_headers_for_request(p_url,
                                                    self.region,
                                                    'execute-api',
                                                    self.access_key,

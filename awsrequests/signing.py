@@ -1,25 +1,18 @@
-import base64
 from collections import OrderedDict
 import datetime
 import hashlib
 import hmac
-import os
-import sys
-try:
-    from urllib.parse import parse_qs, quote, unquote, urlencode
-    from urllib.parse import urlparse as url_parse
-except ImportError: # fallback to Python 2
-    from urlparse import parse_qs
-    from urlparse import urlparse as url_parse
-    from urllib import quote, unquote, urlencode
 
-import requests
+from requests.compat import (
+    parse_qs, url_parse, quote, unquote, urlencode, unquote_plus
+)
 
 
 #  Key derivation functions. See:
 # http://docs.aws.amazon.com/general/latest/gr/signature-v4-examples.html#signature-v4-examples-python
 def sign(key, msg):
     return hmac.new(key, msg.encode('utf-8'), hashlib.sha256).digest()
+
 
 def getSignatureKey(key, dateStamp, regionName, serviceName):
     kDate = sign(('AWS4' + key).encode('utf-8'), dateStamp)
@@ -29,13 +22,15 @@ def getSignatureKey(key, dateStamp, regionName, serviceName):
     return kSigning
 
 
-
-def get_headers_for_request(url, region, service, access_key, secret_key, session_token=None, payload='', headers={}, method='GET', t=None):
+def get_headers_for_request(
+    url, region, service, access_key, secret_key, session_token=None,
+        payload='', headers={}, method='GET', t=None):
     # Create a date for headers and the credential string
     if not t:
         t = datetime.datetime.utcnow()
     amzdate = t.strftime('%Y%m%dT%H%M%SZ')
-    datestamp = t.strftime('%Y%m%d') # Date w/o time, used in credential scope
+    datestamp = t.strftime('%Y%m%d')  # Date w/o time, used in credential scope
+    url = unquote_plus(unquote(url))
 
     # ************* TASK 1: CREATE A CANONICAL REQUEST *************
     # http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
@@ -44,9 +39,13 @@ def get_headers_for_request(url, region, service, access_key, secret_key, sessio
 
     # Step 2: Create canonical URI--the part of the URI from domain to query
     # string (use '/' if no path)
-    parsed=url_parse(url)
+    parsed = url_parse(url)
     host = parsed.netloc
-    canonical_uri = quote(parsed.path)
+    # strip(), AWS wants a clean string, even though the URI may have a
+    # trailing space, meaning
+    # '/mypath' for the signature
+    # '/mypath ' for the HTTP request
+    canonical_uri = quote(parsed.path.strip())
 
     # Step 3: Create the canonical query string. In this example (a GET request),
     # request parameters are in the query string. Query string values must
