@@ -2,10 +2,20 @@ from collections import OrderedDict
 import datetime
 import hashlib
 import hmac
+import sys
 
 from requests.compat import (
-    parse_qs, url_parse, quote, unquote, urlencode, unquote_plus
+    urlparse as url_parse, quote, unquote, urlencode, unquote_plus
 )
+
+_ver = sys.version_info
+is_py2 = (_ver[0] == 2)
+is_py3 = (_ver[0] == 3)
+
+if is_py3:
+    from urllib.parse import parse_qs
+elif is_py2:  # fallback to Python 2
+    from urlparse import parse_qs
 
 
 #  Key derivation functions. See:
@@ -51,8 +61,12 @@ def get_headers_for_request(
     # request parameters are in the query string. Query string values must
     # be URL-encoded (space=%20). The parameters must be sorted by name.
     # For this example, the query string is pre-formatted in the request_parameters variable.
-    params = OrderedDict(sorted(parse_qs(parsed.query).items())) if parsed.query else {}
-    canonical_querystring = urlencode(params, doseq=True)
+    params = OrderedDict(
+        sorted(parse_qs(parsed.query).items())) if parsed.query else {}
+    if is_py2:
+        canonical_querystring = urlencode(params, doseq=True, quote_via=quote)
+    else:
+        canonical_querystring = urlencode(params, doseq=True, quote_via=quote)
 
     # Step 4: Create the canonical headers and signed headers. Header names
     # and value must be trimmed and lowercase, and sorted in ASCII order.
@@ -64,14 +78,14 @@ def get_headers_for_request(
     # Note: The request can include any headers; canonical_headers and
     # signed_headers lists those that you want to be included in the
     # hash of the request. "Host" and "x-amz-date" are always required.
-    headers_to_sign=['host','x-amz-date']
+    headers_to_sign = ['host', 'x-amz-date']
     signed_headers = ';'.join(headers_to_sign)
 
     # Step 6: Create payload hash (hash of the request body content). For GET
     # requests, the payload is an empty string ("").
 
     if payload is None:
-        payload=''
+        payload = ''
     # handle differences between library requests 2.11.0 and previous
     if type(payload) is bytes:
         payload_hash = hashlib.sha256(payload).hexdigest()
@@ -79,37 +93,44 @@ def get_headers_for_request(
         payload_hash = hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
     # Step 7: Combine elements to create create canonical request
-    canonical_request = method + '\n' + canonical_uri + '\n' + canonical_querystring + '\n' + canonical_headers + '\n' + signed_headers + '\n' + payload_hash
+    canonical_request = method + '\n' + canonical_uri + '\n' + canonical_querystring + \
+        '\n' + canonical_headers + '\n' + signed_headers + '\n' + payload_hash
 
     # ************* TASK 2: CREATE THE STRING TO SIGN*************
     # Match the algorithm to the hashing algorithm you use, either SHA-1 or
     # SHA-256 (recommended)
     algorithm = 'AWS4-HMAC-SHA256'
-    credential_scope = datestamp + '/' + region + '/' + service + '/' + 'aws4_request'
-    string_to_sign = algorithm + '\n' +  amzdate + '\n' +  credential_scope + '\n' +  hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
+    credential_scope = datestamp + '/' + region + \
+        '/' + service + '/' + 'aws4_request'
+    string_to_sign = algorithm + '\n' + amzdate + '\n' + credential_scope + \
+        '\n' + hashlib.sha256(canonical_request.encode('utf-8')).hexdigest()
 
     # ************* TASK 3: CALCULATE THE SIGNATURE *************
     # Create the signing key using the function defined above.
     signing_key = getSignatureKey(secret_key, datestamp, region, service)
 
     # Sign the string_to_sign using the signing_key
-    signature = hmac.new(signing_key, (string_to_sign).encode('utf-8'), hashlib.sha256).hexdigest()
+    signature = hmac.new(signing_key, (string_to_sign).encode(
+        'utf-8'), hashlib.sha256).hexdigest()
 
     # ************* TASK 4: ADD SIGNING INFORMATION TO THE REQUEST *************
     # The signing information can be either in a query string value or in
     # a header named Authorization. This code shows how to use a header.
     # Create authorization header and add to request headers
-    authorization_header = algorithm + ' ' + 'Credential=' + access_key + '/' + credential_scope + ', ' +  'SignedHeaders=' + signed_headers + ', ' + 'Signature=' + signature
+    authorization_header = algorithm + ' ' + 'Credential=' + access_key + '/' + \
+        credential_scope + ', ' + 'SignedHeaders=' + \
+        signed_headers + ', ' + 'Signature=' + signature
 
     # The request can include any headers, but MUST include "host", "x-amz-date",
     # and (for this scenario) "Authorization". "host" and "x-amz-date" must
     # be included in the canonical_headers and signed_headers, as noted
     # earlier. Order here is not significant.
     # Python note: The 'host' header is added automatically by the Python 'requests' library.
-    headers_to_add = {'x-amz-date':amzdate, 'Authorization':authorization_header}
+    headers_to_add = {'x-amz-date': amzdate,
+                      'Authorization': authorization_header}
 
     if session_token:
-         headers_to_add['X-Amz-Security-Token']=session_token
+        headers_to_add['X-Amz-Security-Token'] = session_token
     headers.update(headers_to_add)
 
     return headers

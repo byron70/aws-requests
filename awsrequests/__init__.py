@@ -1,30 +1,19 @@
+import logging
 import requests
-import sys
+from requests.compat import unquote, unquote_plus
+
 from .signing import get_headers_for_request
 
-_ver = sys.version_info
-is_py2 = (_ver[0] == 2)
-is_py3 = (_ver[0] == 3)
-
-if is_py3:
-    from urllib.parse import parse_qs, quote, unquote, urlencode
-    from urllib.parse import urlparse as url_parse
-elif is_py2: # fallback to Python 2
-    from urlparse import parse_qs
-    from urlparse import urlparse as url_parse
-    from urllib import quote, unquote, urlencode
-
 try:
-    HAS_BOTO=True
+    HAS_BOTO = True
     import botocore.credentials
     import botocore.session
     import botocore.exceptions
     import boto3
 except ImportError:
-    HAS_BOTO=False
+    HAS_BOTO = False
 
 # Set default logging handler to avoid "No handler found" warnings.
-import logging
 
 try:  # Python 2.7+
     from logging import NullHandler
@@ -33,7 +22,6 @@ except ImportError:
         def emit(self, record):
             pass
 logging.getLogger(__name__).addHandler(NullHandler())
-
 
 
 class AwsRequester(object):
@@ -50,8 +38,7 @@ class AwsRequester(object):
         elif HAS_BOTO:
             # hijack botocore's method.  probably fragile!
             session = botocore.session.Session()
-            resolver = botocore.credentials.create_credential_resolver(session)
-            creds = resolver.load_credentials()
+            creds = session.get_credentials()
             if creds is not None:
                 self.credentials = creds
                 self.access_key = creds.access_key
@@ -60,7 +47,8 @@ class AwsRequester(object):
             else:
                 raise EnvironmentError("could not find AWS creds anywhere!")
         else:
-            raise EnvironmentError("could not find AWS creds (don't have boto3, so didn't look anywhere fancy)")
+            raise EnvironmentError(
+                "could not find AWS creds (don't have boto3, so didn't look anywhere fancy)")
 
     def assume_role(self, role_arn):
         sts_client = boto3.client('sts',
@@ -138,8 +126,7 @@ class AwsRequester(object):
             hooks=hooks)
         prepped = req.prepare()
         # signing will encode the strings
-        p_url = prepped.url
-        p_url = requests.compat.unquote_plus(requests.compat.unquote(p_url))
+        p_url = unquote_plus(prepped.url)
         aws_auth_headers = get_headers_for_request(p_url,
                                                    self.region,
                                                    'execute-api',
@@ -150,7 +137,6 @@ class AwsRequester(object):
                                                    method=prepped.method,
                                                    t=time)
         prepped.headers.update(aws_auth_headers)
-
         response = session.send(prepped,
                                 stream=stream,
                                 verify=verify,
