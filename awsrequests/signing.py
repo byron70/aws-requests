@@ -40,7 +40,6 @@ def get_headers_for_request(
         t = datetime.datetime.utcnow()
     amzdate = t.strftime('%Y%m%dT%H%M%SZ')
     datestamp = t.strftime('%Y%m%d')  # Date w/o time, used in credential scope
-    url = unquote_plus(unquote(url))
 
     # ************* TASK 1: CREATE A CANONICAL REQUEST *************
     # http://docs.aws.amazon.com/general/latest/gr/sigv4-create-canonical-request.html
@@ -55,7 +54,7 @@ def get_headers_for_request(
     # trailing space, meaning
     # '/mypath' for the signature
     # '/mypath ' for the HTTP request
-    canonical_uri = quote(parsed.path.strip())
+    canonical_uri = quote(parsed.path)
 
     # Step 3: Create the canonical query string. In this example (a GET request),
     # request parameters are in the query string. Query string values must

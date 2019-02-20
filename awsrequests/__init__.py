@@ -1,6 +1,6 @@
 import logging
 import requests
-from requests.compat import unquote, unquote_plus
+from requests.compat import unquote, unquote_plus, urlparse as url_parse
 
 from .signing import get_headers_for_request
 
@@ -112,7 +112,6 @@ class AwsRequester(object):
         # TODO: build auth headers here
 
         # TODO: build query params if they were passed in separately
-
         req = requests.Request(
             method,
             url,
@@ -126,8 +125,7 @@ class AwsRequester(object):
             hooks=hooks)
         prepped = req.prepare()
         # signing will encode the strings
-        p_url = unquote_plus(prepped.url)
-        aws_auth_headers = get_headers_for_request(p_url,
+        aws_auth_headers = get_headers_for_request(prepped.url,
                                                    self.region,
                                                    'execute-api',
                                                    self.access_key,

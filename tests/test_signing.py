@@ -12,7 +12,7 @@ API_HEADERS = {
 def test_uri_path_with_trailing_space():
     req = AwsRequester(region=API_REGION)
     got = req.get(
-        url='{}/pets/1234 '.format(API_PATH),
+        url='{}/pets/1234 dirty'.format(API_PATH),
         params={'filters': '[["foo","eq","bar one "]]'},
         headers=API_HEADERS,
     )
