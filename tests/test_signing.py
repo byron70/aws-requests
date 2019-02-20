@@ -1,4 +1,4 @@
-
+import json
 from awsrequests import AwsRequester
 
 API_REGION = 'us-west-2'
@@ -12,8 +12,9 @@ API_HEADERS = {
 def test_uri_path_with_trailing_space():
     req = AwsRequester(region=API_REGION)
     got = req.get(
-        url='{}/pets/1234 dirty'.format(API_PATH),
+        url='{}/pets/1234 '.format(API_PATH),
         params={'filters': '[["foo","eq","bar one "]]'},
         headers=API_HEADERS,
     )
-    assert got.status_code == 200
+    got = json.loads(got.content)
+    assert got.get('id') == 1234

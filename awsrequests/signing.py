@@ -5,7 +5,7 @@ import hmac
 import sys
 
 from requests.compat import (
-    urlparse as url_parse, quote, unquote, urlencode, unquote_plus
+    urlparse as url_parse, quote, unquote, urlencode, unquote_plus, quote_plus
 )
 
 _ver = sys.version_info
@@ -16,6 +16,7 @@ if is_py3:
     from urllib.parse import parse_qs
 elif is_py2:  # fallback to Python 2
     from urlparse import parse_qs
+    import urllib
 
 
 #  Key derivation functions. See:
@@ -63,7 +64,11 @@ def get_headers_for_request(
     params = OrderedDict(
         sorted(parse_qs(parsed.query).items())) if parsed.query else {}
     if is_py2:
-        canonical_querystring = urlencode(params, doseq=True, quote_via=quote)
+        from copy import deepcopy
+        qp_orig = deepcopy(urllib.quote_plus)
+        urllib.quote_plus = quote
+        canonical_querystring = urlencode(params, doseq=True)
+        urllib.quote_plus = qp_orig
     else:
         canonical_querystring = urlencode(params, doseq=True, quote_via=quote)
 
