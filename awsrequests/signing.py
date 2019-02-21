@@ -1,4 +1,5 @@
 from collections import OrderedDict
+from copy import deepcopy
 import datetime
 import hashlib
 import hmac
@@ -51,38 +52,53 @@ def get_headers_for_request(
     # string (use '/' if no path)
     parsed = url_parse(url)
     host = parsed.netloc
-    # strip(), AWS wants a clean string, even though the URI may have a
-    # trailing space, meaning
-    # '/mypath' for the signature
-    # '/mypath ' for the HTTP request
-    canonical_uri = quote(parsed.path)
+    canonical_uri = quote(unquote_plus(parsed.path),
+                          safe="!#$%&'()*+,/:;=?@[]~")
 
     # Step 3: Create the canonical query string. In this example (a GET request),
     # request parameters are in the query string. Query string values must
     # be URL-encoded (space=%20). The parameters must be sorted by name.
     # For this example, the query string is pre-formatted in the request_parameters variable.
-    params = OrderedDict(
-        sorted(parse_qs(parsed.query).items())) if parsed.query else {}
+    params = {}
+    if parsed.query:
+        pq = parse_qs(parsed.query).items()
+        pq = [(p[0], sorted(p[1], key=lambda s: s.lower())) for p in pq]
+        params = OrderedDict(sorted(pq, key=lambda s: s[0].lower()))
+
     if is_py2:
-        from copy import deepcopy
+        # patch quote_plus aws sigv4 does not like escaped spaces with +
         qp_orig = deepcopy(urllib.quote_plus)
         urllib.quote_plus = quote
         canonical_querystring = urlencode(params, doseq=True)
         urllib.quote_plus = qp_orig
     else:
         canonical_querystring = urlencode(params, doseq=True, quote_via=quote)
+    # bit hacky, but quote takes these out as urllib doesn't consider them safe
+    canonical_querystring = canonical_querystring.replace('%7E', '~')
 
     # Step 4: Create the canonical headers and signed headers. Header names
     # and value must be trimmed and lowercase, and sorted in ASCII order.
     # Note that there is a trailing \n.
-    canonical_headers = 'host:' + host + '\n' + 'x-amz-date:' + amzdate + '\n'
+    canonical_headers = ''
+    headers_to_sign = []
+    _headers = {'host': host, 'x-amz-date': amzdate}
+    _headers.update(deepcopy(headers))
+    _headers = OrderedDict(
+        sorted(_headers.items(), key=lambda s: s[0].lower()))
+    for c in _headers:
+        cv = c.strip().lower()
+        val = ' '.join(_headers[c].split()).strip()
+        if cv == 'x-amz-date':
+            val = _headers[c]
+        if c not in headers_to_sign:
+            headers_to_sign.append(cv)
+            canonical_headers = '{}{}:{}\n'.format(canonical_headers, cv, val)
 
     # Step 5: Create the list of signed headers. This lists the headers
     # in the canonical_headers list, delimited with ";" and in alpha order.
     # Note: The request can include any headers; canonical_headers and
     # signed_headers lists those that you want to be included in the
     # hash of the request. "Host" and "x-amz-date" are always required.
-    headers_to_sign = ['host', 'x-amz-date']
     signed_headers = ';'.join(headers_to_sign)
 
     # Step 6: Create payload hash (hash of the request body content). For GET
@@ -135,6 +151,6 @@ def get_headers_for_request(
 
     if session_token:
         headers_to_add['X-Amz-Security-Token'] = session_token
-    headers.update(headers_to_add)
 
+    headers.update(headers_to_add)
     return headers
